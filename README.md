@@ -30,6 +30,7 @@ Die vollständige Beschreibung samt Fallstricken steht in
 | `src/AbasGuiLink/Beispiel.cs` | Verwendungsbeispiele |
 | `scripts/Open-AbasRecord.ps1` | PowerShell-Skript zum schnellen Ausprobieren |
 | `docs/abas-gui-dde-protokoll.md` | Protokollbeschreibung |
+| `docs/umsetzung-in-bestehendem-projekt.md` | Übergabe-Anleitung für die Umsetzung in einem anderen Projekt, inklusive offener Punkte |
 
 ## Schnellstart
 
