@@ -68,6 +68,28 @@ und ändert sich, sobald die GUI neu gestartet wird. Er gehört deshalb zur
 Laufzeit über die EDP-Verbindung abgefragt und nicht in eine Konfiguration
 eingetragen.
 
+## Servernamen ohne EDP-Verbindung ermitteln
+
+Steht keine EDP-Sitzung zur Verfügung, lässt sich der Name auch bei den GUIs
+selbst erfragen. Die Namen sind fortlaufende Zahlen, und Schritt 3 des Ablaufs
+liefert zu jeder GUI ihren Mandanten — gesucht ist also die Nummer, deren
+`CLIENT`-Antwort dem gewünschten Mandanten entspricht.
+
+Damit daraus keine zehntausend Verbindungsversuche werden, hilft ein
+Vorfilter: Ein DDE-Server trägt seinen Namen in die **globale Atomtabelle** von
+Windows ein. `GlobalFindAtom` beantwortet ohne Netzwerk- oder
+Fensterkommunikation, welche Nummern dort stehen; übrig bleibt eine Handvoll
+Kandidaten, die dann einzeln nach `CLIENT` gefragt werden. Der gesamte Durchlauf
+dauert Millisekunden.
+
+Implementiert als `AbasGuiLink.FindGuis()`, `AbasGuiLink.Discover(mandant)` und
+`AbasGuiLink.Connect(mandant)`; im Skript als `-ListGuis` beziehungsweise
+`-Client` ohne `-DdeName`.
+
+Der EDP-Weg bleibt der genauere, weil er ohne Suchen auskommt. Die Suche ist
+gedacht für Werkzeuge, die ohnehin keine EDP-Sitzung offen halten, und für den
+Fall mehrerer gleichzeitig geöffneter Mandanten.
+
 ## Weitere beobachtete Befehle
 
 Auf dem Thema `COMMAND` versteht die GUI zusätzlich abas-Tastenbefehle in spitzen

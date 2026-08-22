@@ -14,32 +14,44 @@
     Protokollbeschreibung: docs/abas-gui-dde-protokoll.md
 
 .PARAMETER DdeName
-    Wert von GUIDDESRVNAME, z. B. "999".
+    Wert von GUIDDESRVNAME, z. B. "999". Entfaellt, wenn -Client angegeben
+    ist: Dann wird die GUI dieses Mandanten automatisch gesucht.
 
 .PARAMETER Reference
     Referenz in der Form "(Satznummer,Datenbanknummer,Tabellenzeile)".
     Mehrere Referenzen sind erlaubt.
 
 .PARAMETER Client
-    Erwarteter Mandantenname (EDP-Variable MANDANT, z. B. "DEMO"). Ist er
-    angegeben, wird vorab geprueft, ob die GUI zu diesem Mandanten gehoert.
+    Mandantenname (EDP-Variable MANDANT, z. B. "DEMO"). Zusammen mit
+    -DdeName eine Pruefung, allein eine Suche.
+
+.PARAMETER ListGuis
+    Listet nur die laufenden abas-GUIs mit ihrem Mandanten auf und beendet
+    sich danach.
 
 .EXAMPLE
     .\Open-AbasRecord.ps1 -DdeName 999 -Reference '(2000068,4,0)'
 
 .EXAMPLE
-    .\Open-AbasRecord.ps1 -DdeName 999 -Client DEMO -Reference '(2000021,4,0)','(2000022,4,0)'
+    .\Open-AbasRecord.ps1 -Client DEMO -Reference '(2000021,4,0)','(2000022,4,0)'
+
+.EXAMPLE
+    .\Open-AbasRecord.ps1 -ListGuis
 #>
 
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Open')]
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(ParameterSetName = 'Open')]
     [string] $DdeName,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter(ParameterSetName = 'Open', Mandatory = $true)]
     [string[]] $Reference,
 
-    [string] $Client
+    [Parameter(ParameterSetName = 'Open')]
+    [string] $Client,
+
+    [Parameter(ParameterSetName = 'List', Mandatory = $true)]
+    [switch] $ListGuis
 )
 
 if (-not ('Abas.GuiLink.AbasDde' -as [type])) {
@@ -68,6 +80,8 @@ public static class AbasDde {
     [DllImport("user32.dll")] static extern bool DdeFreeDataHandle(IntPtr hData);
     [DllImport("user32.dll")] static extern int DdeGetLastError(uint inst);
     [DllImport("user32.dll")] static extern bool DdeUninitialize(uint inst);
+    [DllImport("kernel32.dll", CharSet = CharSet.Ansi)]
+    static extern ushort GlobalFindAtomA(string s);
 
     const int  CP_WINANSI        = 1004;
     const uint APPCMD_CLIENTONLY = 0x10;
@@ -137,11 +151,55 @@ public static class AbasDde {
         DdeFreeStringHandle(inst, hi); DdeUninitialize(inst);
         return res;
     }
+
+    /// <summary>
+    /// Sucht laufende abas-GUIs. Vorgefiltert ueber die globale Atomtabelle
+    /// von Windows, in der jeder DDE-Server seinen Namen hinterlegt — deshalb
+    /// bleiben von zehntausend Nummern nur wenige Kandidaten uebrig.
+    /// Liefert Paare "Dienstname=Mandant".
+    /// </summary>
+    public static string[] FindGuis(int maxServiceNumber) {
+        System.Collections.Generic.List<string> found =
+            new System.Collections.Generic.List<string>();
+        for (int i = 1; i <= maxServiceNumber; i++) {
+            string name = i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (GlobalFindAtomA(name) == 0) continue;
+            string client = QueryClient(name);
+            if (client != null && client.Length > 0) found.Add(name + "=" + client);
+        }
+        return found.ToArray();
+    }
 }}
 '@
 }
 
-if ($PSBoundParameters.ContainsKey('Client')) {
+if ($ListGuis) {
+    $gefunden = [Abas.GuiLink.AbasDde]::FindGuis(9999)
+    if ($gefunden.Count -eq 0) {
+        Write-Warning 'Keine laufende abas-GUI gefunden.'
+        return
+    }
+    return $gefunden | ForEach-Object {
+        $teile = $_ -split '=', 2
+        [pscustomobject]@{ DdeName = $teile[0]; Mandant = $teile[1] }
+    }
+}
+
+if (-not $DdeName) {
+    if (-not $Client) {
+        Write-Error 'Bitte -DdeName oder -Client angeben.'
+        return
+    }
+    $gefunden = [Abas.GuiLink.AbasDde]::FindGuis(9999) |
+                Where-Object { ($_ -split '=', 2)[1] -eq $Client }
+    if (-not $gefunden) {
+        Write-Error "Fuer den Mandanten '$Client' ist keine abas-GUI gestartet."
+        return
+    }
+    $DdeName = ($gefunden[0] -split '=', 2)[0]
+    Write-Verbose "GUI fuer Mandant '$Client' gefunden: DDE-Name '$DdeName'."
+}
+elseif ($Client) {
     $gemeldet = [Abas.GuiLink.AbasDde]::QueryClient($DdeName)
     if ($null -eq $gemeldet) {
         Write-Error "Keine abas-GUI unter dem DDE-Namen '$DdeName' erreichbar. Laeuft die GUI?"

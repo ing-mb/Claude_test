@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -76,9 +78,112 @@ namespace Abas.GuiLink
         /// <param name="tableRow">Tabellenzeile; 0 für den Kopfsatz.</param>
         public static string BuildReference(long recordNumber, int databaseNumber, int tableRow = 0)
         {
-            return "(" + recordNumber.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                 + "," + databaseNumber.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                 + "," + tableRow.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")";
+            return "(" + recordNumber.ToString(CultureInfo.InvariantCulture)
+                 + "," + databaseNumber.ToString(CultureInfo.InvariantCulture)
+                 + "," + tableRow.ToString(CultureInfo.InvariantCulture) + ")";
+        }
+
+        // ------------------------------------------------------------------
+        // Automatische Suche
+        //
+        // Wer keine EDP-Verbindung offen hat, kann den Dienstnamen auch bei
+        // den GUIs selbst erfragen: Sie sind durchnummeriert und beantworten
+        // die Anfrage CLIENT mit ihrem Mandantennamen.
+        //
+        // Damit nicht zehntausend Verbindungsversuche nötig sind, wird
+        // vorgefiltert: Ein DDE-Server trägt seinen Namen in die globale
+        // Atomtabelle von Windows ein. GlobalFindAtom beantwortet in
+        // Sekundenbruchteilen, welche Nummern dort überhaupt stehen — übrig
+        // bleiben in der Regel eine Handvoll Kandidaten.
+        // ------------------------------------------------------------------
+
+        private const int MaxAtomName = 65535;
+
+        /// <summary>
+        /// Sucht alle erreichbaren abas-GUIs und liefert deren DDE-Dienstnamen.
+        /// </summary>
+        /// <param name="expectedClient">
+        /// Mandantenname, auf den eingegrenzt werden soll (z. B. "DEMO").
+        /// Bei null werden alle antwortenden GUIs geliefert.
+        /// </param>
+        /// <param name="maxServiceNumber">
+        /// Obergrenze der geprüften Nummern. Der Standard deckt den gesamten
+        /// beobachteten Bereich ab und dauert dennoch nur Millisekunden.
+        /// </param>
+        public static string[] FindGuis(string expectedClient = null, int maxServiceNumber = 9999)
+        {
+            if (maxServiceNumber < 1 || maxServiceNumber > MaxAtomName)
+                throw new ArgumentOutOfRangeException(nameof(maxServiceNumber),
+                    "Erlaubt sind 1 bis " + MaxAtomName + ".");
+
+            var found = new List<string>();
+
+            foreach (string candidate in RegisteredNumericNames(maxServiceNumber))
+            {
+                string client;
+                try
+                {
+                    using (var link = new AbasGuiLink(candidate))
+                    {
+                        client = link.QueryClient();
+                    }
+                }
+                catch (AbasGuiException)
+                {
+                    // Der Name steht zwar in der Atomtabelle, gehört aber zu
+                    // keinem antwortenden DDE-Server. Nächster Kandidat.
+                    continue;
+                }
+
+                if (expectedClient == null ||
+                    string.Equals(client, expectedClient, StringComparison.OrdinalIgnoreCase))
+                {
+                    found.Add(candidate);
+                }
+            }
+
+            return found.ToArray();
+        }
+
+        /// <summary>
+        /// Ermittelt den DDE-Dienstnamen der GUI des angegebenen Mandanten.
+        /// </summary>
+        /// <exception cref="AbasGuiException">
+        /// Wenn keine GUI dieses Mandanten gefunden wurde.
+        /// </exception>
+        public static string Discover(string expectedClient, int maxServiceNumber = 9999)
+        {
+            if (string.IsNullOrWhiteSpace(expectedClient))
+                throw new ArgumentException("Mandantenname darf nicht leer sein.", nameof(expectedClient));
+
+            string[] found = FindGuis(expectedClient, maxServiceNumber);
+            if (found.Length == 0)
+                throw new AbasGuiException("Für den Mandanten '" + expectedClient +
+                    "' ist keine abas-GUI gestartet.");
+
+            return found[0];
+        }
+
+        /// <summary>
+        /// Sucht die GUI des Mandanten und liefert eine fertige Verbindung.
+        /// </summary>
+        /// <example><code>
+        /// using (var gui = AbasGuiLink.Connect("DEMO"))
+        ///     gui.OpenRecord("(2000068,4,0)");
+        /// </code></example>
+        public static AbasGuiLink Connect(string expectedClient, int maxServiceNumber = 9999)
+        {
+            return new AbasGuiLink(Discover(expectedClient, maxServiceNumber));
+        }
+
+        private static IEnumerable<string> RegisteredNumericNames(int max)
+        {
+            for (int i = 1; i <= max; i++)
+            {
+                string name = i.ToString(CultureInfo.InvariantCulture);
+                if (GlobalFindAtomA(name) != 0)
+                    yield return name;
+            }
         }
 
         /// <summary>
@@ -330,5 +435,8 @@ namespace Abas.GuiLink
 
         [DllImport("user32.dll")]
         private static extern bool DdeUninitialize(uint idInst);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Ansi)]
+        private static extern ushort GlobalFindAtomA(string lpString);
     }
 }

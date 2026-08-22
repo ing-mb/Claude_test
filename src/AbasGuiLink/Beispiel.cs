@@ -47,6 +47,35 @@ namespace Abas.GuiLink.Beispiele
         }
 
         /// <summary>
+        /// Ohne EDP-Verbindung: Die GUI wird anhand des Mandantennamens
+        /// gesucht. Praktisch für Werkzeuge, die keine eigene EDP-Sitzung
+        /// offen haben.
+        /// </summary>
+        public static void OhneEdpVerbindung()
+        {
+            using (var gui = AbasGuiLink.Connect("DEMO"))
+            {
+                Console.WriteLine("Gefundene GUI: " + gui.ServiceName);
+                gui.OpenRecord("(2000068,4,0)");
+            }
+        }
+
+        /// <summary>
+        /// Alle laufenden GUIs auflisten — etwa wenn mehrere Mandanten
+        /// gleichzeitig geöffnet sind.
+        /// </summary>
+        public static void AlleGuisAuflisten()
+        {
+            foreach (string name in AbasGuiLink.FindGuis())
+            {
+                using (var gui = new AbasGuiLink(name))
+                {
+                    Console.WriteLine(name + "  ->  Mandant " + gui.QueryClient());
+                }
+            }
+        }
+
+        /// <summary>
         /// Mehrere Datensätze nacheinander öffnen — die Verbindung wird
         /// dabei nur einmal aufgebaut.
         /// </summary>

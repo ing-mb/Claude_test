@@ -36,10 +36,17 @@ Die vollständige Beschreibung samt Fallstricken steht in
 PowerShell — läuft in `powershell.exe` wie in `pwsh`, ohne Administratorrechte:
 
 ```powershell
-.\scripts\Open-AbasRecord.ps1 -DdeName 999 -Client DEMO -Reference '(2000068,4,0)'
+# GUI über den Mandantennamen suchen
+.\scripts\Open-AbasRecord.ps1 -Client DEMO -Reference '(2000068,4,0)'
+
+# oder mit bekanntem Dienstnamen
+.\scripts\Open-AbasRecord.ps1 -DdeName 999 -Reference '(2000068,4,0)'
+
+# laufende GUIs auflisten
+.\scripts\Open-AbasRecord.ps1 -ListGuis
 ```
 
-C#:
+C# — mit bekanntem Dienstnamen aus der EDP-Verbindung:
 
 ```csharp
 using (var gui = new AbasGuiLink(ddeName))
@@ -49,11 +56,22 @@ using (var gui = new AbasGuiLink(ddeName))
 }
 ```
 
+C# — ohne EDP-Verbindung, die GUI wird über den Mandanten gesucht:
+
+```csharp
+using (var gui = AbasGuiLink.Connect("DEMO"))
+{
+    gui.OpenRecord("(2000068,4,0)");
+}
+```
+
 ## Voraussetzungen
 
 * abas ERP läuft in derselben Windows-Sitzung wie die aufrufende Anwendung
 * keine Administratorrechte, keine Installation, keine zusätzliche Bibliothek
 * `GUIDDESRVNAME` und `MANDANT` aus der bestehenden EDP-Verbindung — im
-  EDP-Protokoll `SHO|0|GUIDDESRVNAME|0` und `SHO|0|MANDANT|0`
+  EDP-Protokoll `SHO|0|GUIDDESRVNAME|0` und `SHO|0|MANDANT|0`.
+  Alternativ `AbasGuiLink.Connect(mandant)`, dann wird gar keine
+  EDP-Verbindung gebraucht.
 
 Den Dienstnamen nicht fest hinterlegen: Er ändert sich mit jedem Start der GUI.
